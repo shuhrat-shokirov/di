@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/shuhrat-shokirov/di/pkg/di"
+	"di/pkg/di"
 	"testing"
 )
 

@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/shuhrat-shokirov/di/pkg/di"
+	"di/pkg/di"
 	"log"
 )
 
