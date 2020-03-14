@@ -19,48 +19,36 @@ func NewContainer() *container {
 	}
 }
 
-func (c *container) Provide(constructors ...interface{}) (err error) {
-	err = c.register(constructors)
-	if err != nil {
-		return err
-	}
-	err = c.wire()
-	if err != nil {
-		return err
-	}
-
-	return nil
+func (c *container) Provide(constructors ...interface{}) {
+	c.register(constructors)
+	c.wire()
 }
 
 func (c *container) Component(target interface{}) {
 	if target == nil {
-		panic("errors: target cannot be nil")
+		panic(errors.New("target cannot be nil"))
 	}
 	targetValue := reflect.ValueOf(target)
 	targetType := targetValue.Type()
 	targetTypeType := targetValue.Elem().Type()
 	value, ok := c.components[targetTypeType]
-
 	if !ok {
-		panic(errors.New("no such component"))
+		panic(errors.New("no such component"),)
 	}
 
 	if targetType.Kind() != reflect.Ptr || targetValue.IsNil() {
-		panic("errors: target must be a non-nil pointer")
+		panic(errors.New("target must be a non-nil pointer"))
 	}
 	targetElemType := targetType.Elem()
-
 	if !reflect.TypeOf(value).AssignableTo(targetElemType) {
 		panic(errors.New("cant' assign component to pointer"))
 	}
-
 	targetValue.Elem().Set(reflect.ValueOf(value))
 	return
 }
 
 func (c *container) Start() {
 	for _, component := range c.components {
-
 		if starter, ok := component.(StartListener); ok {
 			starter.Start()
 		}
@@ -69,67 +57,48 @@ func (c *container) Start() {
 
 func (c *container) Stop() {
 	for _, component := range c.components {
-
 		if stopper, ok := component.(StopListener); ok {
 			stopper.Stop()
 		}
 	}
 }
 
-func (c *container) register(constructors []interface{}) (err error) {
+func (c *container) register(constructors []interface{}) {
 	for _, constructor := range constructors {
 		constructorType := reflect.TypeOf(constructor)
-
-		log.Print(constructorType.Kind())
 		if constructorType.Kind() != reflect.Func {
-			err = errors.New(fmt.Sprintf("%s must be constructor", constructorType.Name()))
-			return err
+			panic(fmt.Errorf("%s must be constructor", constructorType.Name()))
 		}
-
 		if constructorType.NumOut() != 1 {
-			err = errors.New(fmt.Sprintf("%s constructor must return only one result", constructorType.Name()))
-			return err
+			panic(fmt.Errorf("%s constructor must return only one result", constructorType.Name()))
 		}
-
 		outType := constructorType.Out(0)
-
 		if _, exists := c.definitions[outType]; exists {
-			err = errors.New(fmt.Sprintf("ambiguous definition %s already exists", constructorType.Name()))
-			return err
+			panic(fmt.Errorf("ambiguous definition %s already exists", constructorType.Name()))
 		}
-
 		paramsCount := constructorType.NumIn()
 		c.definitions[outType] = definition{
 			dependencies: paramsCount,
 			constructor:  reflect.ValueOf(constructor),
 		}
 	}
-
-	return nil
 }
 
-func (c *container) wire() (err error) {
+func (c *container) wire() {
 	rest := make(map[reflect.Type]definition, len(c.definitions))
-
 	for key, value := range c.definitions {
 		rest[key] = value
 	}
-
 	for {
 		wired := 0
-
 		for key, value := range rest {
-			depsValues := make([]reflect.Value, 0)
-
+			depsValues := make([]reflect.Value, 0) // те, зависимости, которые уже есть
 			for i := 0; i < value.dependencies; i++ {
-
 				depType := value.constructor.Type().In(i)
-
 				if dep, exists := c.components[depType]; exists {
 					depsValues = append(depsValues, reflect.ValueOf(dep))
 				}
 			}
-
 			if len(depsValues) == value.dependencies {
 				wired++
 				component := value.constructor.Call(depsValues)[0].Interface()
@@ -138,17 +107,17 @@ func (c *container) wire() (err error) {
 				continue
 			}
 		}
-
 		if len(rest) == 0 {
 			return
 		}
-
 		if wired == 0 {
-			err := errors.New("some components has unmet dependencies")
-			return err
+			log.Printf("less!!\n")
+			for index, d := range rest {
+				log.Printf("%d -dependency %v", index, d)
+			}
+			panic(fmt.Errorf("some components has unmet dependencies: %v", rest))
 		}
 	}
-
 }
 
 type definition struct {
