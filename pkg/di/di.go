@@ -19,9 +19,16 @@ func NewContainer() *container {
 	}
 }
 
-func (c *container) Provide(constructors ...interface{}) {
-	c.register(constructors)
-	c.wire()
+func (c *container) Provide(constructors ...interface{})(err error) {
+	err = c.register(constructors)
+	if err != nil {
+		return err
+	}
+	err = c.wire()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (c *container) Component(target interface{}) {
@@ -63,18 +70,18 @@ func (c *container) Stop() {
 	}
 }
 
-func (c *container) register(constructors []interface{}) {
+func (c *container) register(constructors []interface{}) error {
 	for _, constructor := range constructors {
 		constructorType := reflect.TypeOf(constructor)
 		if constructorType.Kind() != reflect.Func {
-			panic(fmt.Errorf("%s must be constructor", constructorType.Name()))
+			return  fmt.Errorf("%s must be constructor", constructorType.Name())
 		}
 		if constructorType.NumOut() != 1 {
-			panic(fmt.Errorf("%s constructor must return only one result", constructorType.Name()))
+			return  fmt.Errorf("%s constructor must return only one result", constructorType.Name())
 		}
 		outType := constructorType.Out(0)
 		if _, exists := c.definitions[outType]; exists {
-			panic(fmt.Errorf("ambiguous definition %s already exists", constructorType.Name()))
+			return  fmt.Errorf("ambiguous definition %s already exists", constructorType.Name())
 		}
 		paramsCount := constructorType.NumIn()
 		c.definitions[outType] = definition{
@@ -82,9 +89,10 @@ func (c *container) register(constructors []interface{}) {
 			constructor:  reflect.ValueOf(constructor),
 		}
 	}
+	return nil
 }
 
-func (c *container) wire() {
+func (c *container) wire() error {
 	rest := make(map[reflect.Type]definition, len(c.definitions))
 	for key, value := range c.definitions {
 		rest[key] = value
@@ -92,7 +100,7 @@ func (c *container) wire() {
 	for {
 		wired := 0
 		for key, value := range rest {
-			depsValues := make([]reflect.Value, 0) // те, зависимости, которые уже есть
+			depsValues := make([]reflect.Value, 0)
 			for i := 0; i < value.dependencies; i++ {
 				depType := value.constructor.Type().In(i)
 				if dep, exists := c.components[depType]; exists {
@@ -108,14 +116,13 @@ func (c *container) wire() {
 			}
 		}
 		if len(rest) == 0 {
-			return
+			return nil
 		}
 		if wired == 0 {
-			log.Printf("less!!\n")
 			for index, d := range rest {
 				log.Printf("%d -dependency %v", index, d)
 			}
-			panic(fmt.Errorf("some components has unmet dependencies: %v", rest))
+			return fmt.Errorf("some components has unmet dependencies: %v", rest)
 		}
 	}
 }
